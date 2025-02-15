@@ -1,8 +1,9 @@
-import os
 import requests
 import pymongo
-from telegram import Update, ChatAction
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+import time
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.constants import ChatAction
 
 # Configuration
 TOKEN = "7834485675:AAEF8h--NyCy7IAHWrRAZ2vYUGP69vz-9GE"
@@ -37,30 +38,30 @@ def store_user(user_id, username, first_name):
         upsert=True
     )
 
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     store_user(user.id, user.username, user.first_name)
-    update.message.reply_text("🤖 Hello! I'm an AI chatbot. Ask me anything!")
+    await update.message.reply_text("🤖 Hello! I'm an AI chatbot. Ask me anything!")
 
-def handle_message(update: Update, context: CallbackContext):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     store_user(user.id, user.username, user.first_name)
     
-    context.bot.send_chat_action(
+    await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING
     )
     
     ai_response = get_ai_response(update.message.text)
-    update.message.reply_text(ai_response)
+    await update.message.reply_text(ai_response)
 
-def broadcast(update: Update, context: CallbackContext):
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
-        update.message.reply_text("❌ You are not authorized to use this command.")
+        await update.message.reply_text("❌ You are not authorized to use this command.")
         return
 
     if not context.args:
-        update.message.reply_text("⚠️ Please provide a message to broadcast.")
+        await update.message.reply_text("⚠️ Please provide a message to broadcast.")
         return
 
     message = " ".join(context.args)
@@ -70,7 +71,7 @@ def broadcast(update: Update, context: CallbackContext):
 
     for user in all_users:
         try:
-            context.bot.send_message(
+            await context.bot.send_message(
                 chat_id=user["user_id"],
                 text=f"📢 Broadcast:\n\n{message}"
             )
@@ -78,24 +79,24 @@ def broadcast(update: Update, context: CallbackContext):
         except Exception as e:
             print(f"Failed to send to {user['user_id']}: {e}")
             failed += 1
-        time.sleep(0.1)  # Rate limiting
+        time.sleep(0.1)
 
-    update.message.reply_text(
+    await update.message.reply_text(
         f"📊 Broadcast completed!\n"
         f"✅ Success: {success}\n"
         f"❌ Failed: {failed}"
     )
 
-def stats(update: Update, context: CallbackContext):
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
-        update.message.reply_text("❌ You are not authorized to use this command.")
+        await update.message.reply_text("❌ You are not authorized to use this command.")
         return
 
     total_users = users_collection.count_documents({})
-    update.message.reply_text(f"📊 Total users: {total_users}")
+    await update.message.reply_text(f"📊 Total users: {total_users}")
 
 def main():
-    updater = Updater(TOKEN, use_context=True)
+    updater = Updater(TOKEN)
     dp = updater.dispatcher
 
     # Create indexes
@@ -106,7 +107,7 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("broadcast", broadcast))
     dp.add_handler(CommandHandler("stats", stats))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    dp.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     updater.start_polling()
     updater.idle()
