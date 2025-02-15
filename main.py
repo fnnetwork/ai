@@ -15,13 +15,17 @@ client = pymongo.MongoClient(MONGODB_URI)
 db = client["ai_chatbot_db"]
 users_collection = db["users"]
 
+# Constants
+MAX_MESSAGE_LENGTH = 4096  # Telegram max message length
+
 def get_ai_response(query):
     api_url = f"https://devil-web.in/api/ai.php?query={query}"
     try:
         response = requests.get(api_url)
         response.raise_for_status() 
         data = response.json()
-        return data.get("response", "Sorry, I couldn't retrieve an answer.")
+        reply = data.get("response", "Sorry, I couldn't retrieve an answer.")
+        return reply[:MAX_MESSAGE_LENGTH * 2]  # Limit to prevent overflow
     except requests.exceptions.RequestException as e:
         return f"Error: Could not connect to the API. {e}"
     except ValueError:
@@ -41,19 +45,22 @@ def store_user(user_id, username, first_name):
 async def start(update: Update, context):
     user = update.effective_user
     store_user(user.id, user.username, user.first_name)
-    await update.message.reply_text("🤖 Hello! I'm an AI chatbot. Ask me anything!")
+    await update.message.reply_text("🤖 Hᴇʟʟᴏ! I'ᴍ DᴇᴇᴘSᴇᴇᴋ-R1, ᴀɴ ᴀʀᴛɪғɪᴄɪᴀʟ ɪɴᴛᴇʟʟɪɢᴇɴᴄᴇ ᴀssɪsᴛᴀɴᴛ Cʀᴇᴀᴛᴇᴅ Bʏ https://t.me/fn_network_back Pʟᴇᴀsᴇ Jᴏɪɴ Us.")
 
 async def handle_message(update: Update, context):
     user = update.effective_user
     store_user(user.id, user.username, user.first_name)
-    
+
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING
     )
-    
+
     ai_response = get_ai_response(update.message.text)
-    await update.message.reply_text(ai_response)
+    
+    # Split messages if they exceed Telegram's limit
+    for i in range(0, len(ai_response), MAX_MESSAGE_LENGTH):
+        await update.message.reply_text(ai_response[i:i+MAX_MESSAGE_LENGTH])
 
 async def broadcast(update: Update, context):
     if update.effective_user.id != OWNER_ID:
@@ -112,4 +119,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
