@@ -6,9 +6,9 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.constants import ChatAction
 
 # Configuration
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-OWNER_ID = 123456789  # Replace with your numeric Telegram ID
-MONGODB_URI = "YOUR_MONGODB_CONNECTION_STRING"
+TOKEN = "7834485675:AAEF8h--NyCy7IAHWrRAZ2vYUGP69vz-9GE"
+OWNER_ID = 7593550190  # Replace with your numeric Telegram ID
+MONGODB_URI = "mongodb+srv://SiestaXMusic:BGMI272@cluster0.nik6j.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 # MongoDB connection
 client = pymongo.MongoClient(MONGODB_URI)
