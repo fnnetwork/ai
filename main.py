@@ -2,7 +2,7 @@ import requests
 import pymongo
 import time
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ChatAction
 
 # Configuration
@@ -15,23 +15,25 @@ client = pymongo.MongoClient(MONGODB_URI)
 db = client["ai_chatbot_db"]
 users_collection = db["users"]
 
-# Constants
-MAX_MESSAGE_LENGTH = 4096  # Telegram max message length
+# Ensure indexes for efficient queries
+users_collection.create_index("user_id", unique=True)
+users_collection.create_index("last_interaction")
 
 def get_ai_response(query):
+    """Fetch AI response from external API."""
     api_url = f"https://devil-web.in/api/ai.php?query={query}"
     try:
         response = requests.get(api_url)
         response.raise_for_status() 
         data = response.json()
-        reply = data.get("response", "Sorry, I couldn't retrieve an answer.")
-        return reply[:MAX_MESSAGE_LENGTH * 2]  # Limit to prevent overflow
+        return data.get("response", "Sorry, I couldn't retrieve an answer.")
     except requests.exceptions.RequestException as e:
         return f"Error: Could not connect to the API. {e}"
     except ValueError:
         return "Error: Invalid response from the API."
 
 def store_user(user_id, username, first_name):
+    """Store user details in MongoDB."""
     users_collection.update_one(
         {"user_id": user_id},
         {"$set": {
@@ -42,12 +44,14 @@ def store_user(user_id, username, first_name):
         upsert=True
     )
 
-async def start(update: Update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command."""
     user = update.effective_user
     store_user(user.id, user.username, user.first_name)
     await update.message.reply_text("🤖 Hᴇʟʟᴏ! I'ᴍ DᴇᴇᴘSᴇᴇᴋ-R1, ᴀɴ ᴀʀᴛɪғɪᴄɪᴀʟ ɪɴᴛᴇʟʟɪɢᴇɴᴄᴇ ᴀssɪsᴛᴀɴᴛ Cʀᴇᴀᴛᴇᴅ Bʏ https://t.me/fn_network_back Pʟᴇᴀsᴇ Jᴏɪɴ Us.")
 
-async def handle_message(update: Update, context):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle incoming user messages."""
     user = update.effective_user
     store_user(user.id, user.username, user.first_name)
 
@@ -57,24 +61,32 @@ async def handle_message(update: Update, context):
     )
 
     ai_response = get_ai_response(update.message.text)
-    
-    # Split messages if they exceed Telegram's limit
-    for i in range(0, len(ai_response), MAX_MESSAGE_LENGTH):
-        await update.message.reply_text(ai_response[i:i+MAX_MESSAGE_LENGTH])
 
-async def broadcast(update: Update, context):
+    # Ensure message is properly formatted for Telegram
+    if "```" not in ai_response:
+        ai_response = f"```\n{ai_response}\n```"
+
+    # Send message while handling length limitations
+    try:
+        await update.message.reply_text(ai_response, parse_mode="MarkdownV2")
+    except Exception:
+        # If error occurs (e.g., long message), split response
+        for chunk in [ai_response[i:i+4000] for i in range(0, len(ai_response), 4000)]:
+            await update.message.reply_text(f"```\n{chunk}\n```", parse_mode="MarkdownV2")
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send a broadcast message to all users (Admin only)."""
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ You are not authorized to use this command.")
         return
 
-    if not update.message.text or len(update.message.text.split(maxsplit=1)) < 2:
+    if not context.args:
         await update.message.reply_text("⚠️ Please provide a message to broadcast.")
         return
 
-    message = update.message.text.split(maxsplit=1)[1]
+    message = " ".join(context.args)
     all_users = users_collection.find()
-    success = 0
-    failed = 0
+    success, failed = 0, 0
 
     for user in all_users:
         try:
@@ -94,7 +106,8 @@ async def broadcast(update: Update, context):
         f"❌ Failed: {failed}"
     )
 
-async def stats(update: Update, context):
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show total number of registered users (Admin only)."""
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ You are not authorized to use this command.")
         return
@@ -103,19 +116,18 @@ async def stats(update: Update, context):
     await update.message.reply_text(f"📊 Total users: {total_users}")
 
 def main():
-    application = Application.builder().token(TOKEN).build()
-
-    # Create indexes
-    users_collection.create_index("user_id", unique=True)
-    users_collection.create_index("last_interaction")
+    """Start the bot."""
+    app = Application.builder().token(TOKEN).build()
 
     # Handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("broadcast", broadcast))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("broadcast", broadcast))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    application.run_polling()
+    # Start polling
+    print("🤖 Bot is running...")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
