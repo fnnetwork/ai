@@ -1,5 +1,6 @@
 import requests
 import pymongo
+import re
 import time
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -50,6 +51,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store_user(user.id, user.username, user.first_name)
     await update.message.reply_text("🤖 Hᴇʟʟᴏ! I'ᴍ DᴇᴇᴘSᴇᴇᴋ-R1, ᴀɴ ᴀʀᴛɪғɪᴄɪᴀʟ ɪɴᴛᴇʟʟɪɢᴇɴᴄᴇ ᴀssɪsᴛᴀɴᴛ Cʀᴇᴀᴛᴇᴅ Bʏ https://t.me/fn_network_back Pʟᴇᴀsᴇ Jᴏɪɴ Us.")
 
+def escape_markdown_v2(text):
+    """Escapes special characters for MarkdownV2 formatting in Telegram."""
+    escape_chars = r"_*[]()~`>#+-=|{}.!"
+    return re.sub(r"([" + re.escape(escape_chars) + r"])", r"\\\1", text)
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming user messages."""
     user = update.effective_user
@@ -62,17 +68,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ai_response = get_ai_response(update.message.text)
 
-    # Ensure message is properly formatted for Telegram
-    if "```" not in ai_response:
-        ai_response = f"```\n{ai_response}\n```"
+    # Escape special characters before formatting
+    escaped_response = escape_markdown_v2(ai_response)
 
-    # Send message while handling length limitations
+    # Ensure it's properly formatted as a code block
+    formatted_response = f"```\n{escaped_response}\n```"
+
+    # Send the message, handling Telegram's length limitation
     try:
-        await update.message.reply_text(ai_response, parse_mode="MarkdownV2")
+        await update.message.reply_text(formatted_response, parse_mode="MarkdownV2")
     except Exception:
-        # If error occurs (e.g., long message), split response
-        for chunk in [ai_response[i:i+4000] for i in range(0, len(ai_response), 4000)]:
-            await update.message.reply_text(f"```\n{chunk}\n```", parse_mode="MarkdownV2")
+        # If error occurs (e.g., long message), split and send in parts
+        for chunk in [escaped_response[i:i+4000] for i in range(0, len(escaped_response), 4000)]:
+            await update.message.reply_text(f"```\n{chunk}\
+n```", parse_mode="MarkdownV2")
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a broadcast message to all users (Admin only)."""
